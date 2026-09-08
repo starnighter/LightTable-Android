@@ -79,12 +79,37 @@ class HomePage extends StatelessWidget {
       courses: controller.courses,
       periods: controller.periods,
       now: now,
-      onCourseTap: (course) async {
+      onCourseTap: (course, week) async {
         await CourseEditorSheet.show(
           context,
           course: course,
+          schedule: schedule,
+          initialWeek: week,
+          initialWeekday: course.weekday,
+          initialPeriod: course.firstPeriod,
           periods: controller.periods,
-          onSave: controller.updateCourse,
+          onSave: (draft) => controller.updateCourseOccurrence(
+            course: course.copyWith(
+              name: draft.name,
+              teacher: draft.teacher,
+              location: draft.location,
+              periods: draft.periods,
+            ),
+            sourceWeek: week,
+            targetWeek: draft.weekInterval.single,
+            targetWeekday: draft.weekday,
+          ),
+        );
+      },
+      onEmptySlotTap: (week, weekday, period) async {
+        await CourseEditorSheet.show(
+          context,
+          schedule: schedule,
+          initialWeek: week,
+          initialWeekday: weekday,
+          initialPeriod: period,
+          periods: controller.periods,
+          onSave: controller.addCourse,
         );
       },
     );

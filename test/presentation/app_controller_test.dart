@@ -122,6 +122,10 @@ final class _DeferredScheduleRepository implements ScheduleRepository {
   var getCoursesCalls = 0;
 
   @override
+  Future<Course> addCourse(String scheduleId, CourseDraft course) =>
+      throw UnimplementedError();
+
+  @override
   Future<List<Schedule>> getSchedules() {
     getSchedulesCalls++;
     return schedules.future;
@@ -157,6 +161,14 @@ final class _DeferredScheduleRepository implements ScheduleRepository {
 
   @override
   Future<void> updateCourse(Course course) => throw UnimplementedError();
+
+  @override
+  Future<void> updateCourseOccurrence({
+    required Course course,
+    required int sourceWeek,
+    required int targetWeek,
+    required int targetWeekday,
+  }) => throw UnimplementedError();
 
   @override
   Future<void> updateSchedule(Schedule schedule) => throw UnimplementedError();

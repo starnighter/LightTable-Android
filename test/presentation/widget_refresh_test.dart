@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lighttable/data/repositories/sqlite_period_repository.dart';
 import 'package:lighttable/data/repositories/sqlite_schedule_repository.dart';
+import 'package:lighttable/domain/models/course.dart';
 import 'package:lighttable/presentation/controllers/app_controller.dart';
 
 import '../support/test_database.dart';
@@ -34,22 +35,43 @@ void main() {
     );
     expect(refreshCount, 4);
 
-    await controller.updatePeriod(
-      controller.periods.first.copyWith(endMinutes: 8 * 60 + 44),
+    await controller.addCourse(
+      CourseDraft(
+        name: '临时课程',
+        weekInterval: const [1],
+        weekday: 3,
+        periods: const [3],
+      ),
     );
     expect(refreshCount, 5);
 
-    await controller.addPeriod();
+    final recurring = controller.courses.singleWhere(
+      (course) => course.name == '已修改课程',
+    );
+    await controller.updateCourseOccurrence(
+      course: recurring,
+      sourceWeek: 1,
+      targetWeek: 1,
+      targetWeekday: 4,
+    );
     expect(refreshCount, 6);
-    await controller.deleteLastPeriod();
+
+    await controller.updatePeriod(
+      controller.periods.first.copyWith(endMinutes: 8 * 60 + 44),
+    );
     expect(refreshCount, 7);
 
-    final second = await controller.importScheduleResult(_importResult);
+    await controller.addPeriod();
     expect(refreshCount, 8);
-    await controller.selectSchedule(first.id);
+    await controller.deleteLastPeriod();
     expect(refreshCount, 9);
-    await controller.deleteSchedule(first.id);
+
+    final second = await controller.importScheduleResult(_importResult);
     expect(refreshCount, 10);
+    await controller.selectSchedule(first.id);
+    expect(refreshCount, 11);
+    await controller.deleteSchedule(first.id);
+    expect(refreshCount, 12);
     expect(controller.selectedSchedule!.id, second.id);
   });
 }

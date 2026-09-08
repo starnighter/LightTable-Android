@@ -21,5 +21,14 @@ abstract interface class ScheduleRepository {
 
   Future<void> updateCourse(Course course);
 
+  Future<Course> addCourse(String scheduleId, CourseDraft course);
+
+  Future<void> updateCourseOccurrence({
+    required Course course,
+    required int sourceWeek,
+    required int targetWeek,
+    required int targetWeekday,
+  });
+
   Future<void> deleteSchedule(String scheduleId);
 }

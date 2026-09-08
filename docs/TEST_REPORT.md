@@ -1,7 +1,7 @@
 # LightTable Android 最终测试报告
 
-测试日期：2026-09-07
-应用版本：1.1.2+2
+测试日期：2026-09-08
+应用版本：1.2.0+3
 包名：`com.yangpixi.lighttable`
 
 ## 测试环境
@@ -22,7 +22,7 @@
 | 检查 | 结果 | 覆盖 |
 | --- | --- | --- |
 | `flutter analyze` | 通过，0 个问题 | 全部 Dart 源码和测试 |
-| `flutter test` | 48/48 通过 | 领域、SQLite、并发初始化、批量课程读取、控制器和 Widget UI |
+| `flutter test` | 55/55 通过 | 领域、SQLite、临时课程事务、并发初始化、批量课程读取、控制器和 Widget UI |
 | `node tool/test_csu_extract_script.js` | 通过 | 同单元格多课程拆分、单双周解析和分隔线过滤 |
 | `app:testDebugUnitTest` | 6/6 通过 | 小组件周次、跨日和课程优先级 |
 | API 26 `connectedDebugAndroidTest` | 4/4 通过 | Kotlin 只读 SQLite 和空状态 |
@@ -37,11 +37,11 @@
 - 源码：项目根目录中的 `lib/`、`android/`、`assets/`、`test/` 和 `integration_test/`。
 - Debug APK：`build/app/outputs/flutter-apk/app-debug.apk`。
 - Release APK：`build/app/outputs/flutter-apk/app-release.apk`，当前使用 Debug 密钥，仅供侧载验证。
-- Debug APK 大小：168,956,499 字节。
-- Debug APK SHA-256：`bebe9044692c5713e3a202abc1f47d936dbf0fd88b9e3e06bc66c4e3f438b465`。
-- Release APK 大小：57,211,546 字节。
-- Release APK SHA-256：`62e6505d07091388531edc0e7e47f09dc3f871f36e754caa700a51059fdc6a93`。
-- APK 元数据：包名 `com.yangpixi.lighttable`，版本 `1.1.2`（versionCode 2），minSdk 26，targetSdk 36。
+- Debug APK 大小：168,968,311 字节。
+- Debug APK SHA-256：`cf90bc35a6ca8d835eaf4d9666303bd9b3aab5db616f89d0b58883081395caf0`。
+- Release APK 大小：57,227,994 字节。
+- Release APK SHA-256：`725200d94f7b489a4ad1ee319dffee4a2d8fee4190c1d9d2b5c23ef1c24d5fea`。
+- APK 元数据：包名 `com.yangpixi.lighttable`，版本 `1.2.0`（versionCode 3），minSdk 26，targetSdk 36。
 
 ## 设备流程回归
 
@@ -61,12 +61,15 @@ API 26 和 API 36 均完成以下流程：
 
 课程表显示回归还验证了同一节次单双周课程按周切换、同周重叠课程并排显示，以及 12 节课程在 400×800 逻辑像素竖屏内无需纵向滚动。
 
+2026-09-08 的增量自动化回归还覆盖：从其他周一键返回当前周、把重复课程中的单次课程拆分并调整到指定日期、从空白节次添加单日临时课程、失败事务保持原课程不变，以及两类修改后请求桌面小组件刷新。
+
 ## 启动与翻页性能回归
 
 - `runApp` 不再等待 SQLite 初始化，Android 可以先显示 Flutter 首帧，再异步恢复课表。
 - 多个启动读取共享同一个数据库打开任务，且课表、选择项和节次读取会同时发起，避免重复打开和串行等待。
 - 单个课表的课程关系读取由原来的 `1 + 2 × 课程数` 次查询降为固定 3 次查询。
 - 周课程过滤和冲突分栏只在数据变化时计算；左右滑动时预加载相邻周、保留已访问页面，周标题更新不会重建整个 `PageView`。
+- 空白节次加课由每周约 70 个透明点击组件改为单一坐标命中层，滑动时不再重复布局和合成大量手势组件。
 - API 36 无界面模拟器 Debug APK 三次冷启动：优化前 1801/1211/1363 ms，优化后 1459/1243/1236 ms；优化后稳定样本约 1.24 秒。Debug VM 与模拟器本身仍有固定开销，真机时间会因设备性能和课表数据量而变化。
 
 ## Android 16 Release 启动回归
