@@ -77,6 +77,28 @@ final class AppController extends ChangeNotifier {
     await _refreshAfterMutation();
   }
 
+  Future<void> addCourse(CourseDraft course) async {
+    final schedule = _selectedSchedule;
+    if (schedule == null) return;
+    await _scheduleRepository.addCourse(schedule.id, course);
+    await _refreshAfterMutation();
+  }
+
+  Future<void> updateCourseOccurrence({
+    required Course course,
+    required int sourceWeek,
+    required int targetWeek,
+    required int targetWeekday,
+  }) async {
+    await _scheduleRepository.updateCourseOccurrence(
+      course: course,
+      sourceWeek: sourceWeek,
+      targetWeek: targetWeek,
+      targetWeekday: targetWeekday,
+    );
+    await _refreshAfterMutation();
+  }
+
   Future<void> updatePeriod(Period period) async {
     await _periodRepository.updatePeriod(period);
     await _refreshAfterMutation();

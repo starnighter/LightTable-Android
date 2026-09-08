@@ -152,31 +152,101 @@ final class SqliteScheduleRepository implements ScheduleRepository {
     final db = await _database.database;
     await db.transaction((transaction) async {
       final schedule = await _requireSchedule(transaction, course.scheduleId);
-      if (course.weekInterval.any((week) => week > schedule.totalWeeks)) {
-        throw const ValidationException('课程周次超出所属课表的学期范围');
-      }
-      await _requirePeriods(transaction, course.periods);
+      await _replaceCourse(transaction, course, schedule.totalWeeks);
+    });
+  }
 
-      final changed = await transaction.update(
+  @override
+  Future<Course> addCourse(String scheduleId, CourseDraft draft) async {
+    final db = await _database.database;
+    final course = draft.toCourse(id: _idGenerator(), scheduleId: scheduleId);
+    await db.transaction((transaction) async {
+      final schedule = await _requireSchedule(transaction, scheduleId);
+      await _insertCourse(transaction, course, schedule.totalWeeks);
+    });
+    return course;
+  }
+
+  @override
+  Future<void> updateCourseOccurrence({
+    required Course course,
+    required int sourceWeek,
+    required int targetWeek,
+    required int targetWeekday,
+  }) async {
+    final db = await _database.database;
+    await db.transaction((transaction) async {
+      final schedule = await _requireSchedule(transaction, course.scheduleId);
+      if (sourceWeek < 1 || sourceWeek > schedule.totalWeeks) {
+        throw const ValidationException('原课程日期超出学期范围');
+      }
+      if (targetWeek < 1 || targetWeek > schedule.totalWeeks) {
+        throw const ValidationException('调整后的课程日期超出学期范围');
+      }
+      if (targetWeekday < 1 || targetWeekday > 7) {
+        throw const ValidationException('星期必须在 1 到 7 之间');
+      }
+
+      final storedRows = await transaction.query(
         'courses',
-        _courseToRow(course),
-        where: 'id = ?',
-        whereArgs: [course.id],
+        columns: ['weekday'],
+        where: 'id = ? AND schedule_id = ?',
+        whereArgs: [course.id, course.scheduleId],
+        limit: 1,
       );
-      if (changed != 1) {
+      if (storedRows.isEmpty) {
         throw const ValidationException('要更新的课程不存在');
       }
-      await transaction.delete(
+      final weekRows = await transaction.query(
         'course_weeks',
+        columns: ['week_number'],
         where: 'course_id = ?',
         whereArgs: [course.id],
+        orderBy: 'week_number ASC',
       );
-      await transaction.delete(
-        'course_periods',
-        where: 'course_id = ?',
-        whereArgs: [course.id],
+      final storedWeeks = weekRows
+          .map((row) => row['week_number']! as int)
+          .toList(growable: false);
+      if (!storedWeeks.contains(sourceWeek)) {
+        throw const ValidationException('当前周没有这节课程');
+      }
+
+      final storedWeekday = storedRows.single['weekday']! as int;
+      if (sourceWeek == targetWeek && storedWeekday == targetWeekday) {
+        await _replaceCourse(
+          transaction,
+          course.copyWith(weekInterval: storedWeeks),
+          schedule.totalWeeks,
+        );
+        return;
+      }
+
+      await _requirePeriods(transaction, course.periods);
+      if (storedWeeks.length == 1) {
+        await _replaceCourse(
+          transaction,
+          course.copyWith(weekInterval: [targetWeek], weekday: targetWeekday),
+          schedule.totalWeeks,
+        );
+        return;
+      }
+
+      final remainingCourse = course.copyWith(
+        weekInterval: storedWeeks.where((week) => week != sourceWeek).toList(),
+        weekday: storedWeekday,
       );
-      await _insertCourseRelations(transaction, course);
+      await _replaceCourse(transaction, remainingCourse, schedule.totalWeeks);
+      final movedCourse = Course(
+        id: _idGenerator(),
+        scheduleId: course.scheduleId,
+        name: course.name,
+        location: course.location,
+        teacher: course.teacher,
+        weekInterval: [targetWeek],
+        weekday: targetWeekday,
+        periods: course.periods,
+      );
+      await _insertCourse(transaction, movedCourse, schedule.totalWeeks);
     });
   }
 
@@ -350,6 +420,37 @@ final class SqliteScheduleRepository implements ScheduleRepository {
         'period_number': period,
       });
     }
+  }
+
+  static Future<void> _replaceCourse(
+    DatabaseExecutor executor,
+    Course course,
+    int totalWeeks,
+  ) async {
+    if (course.weekInterval.any((week) => week > totalWeeks)) {
+      throw const ValidationException('课程周次超出所属课表的学期范围');
+    }
+    await _requirePeriods(executor, course.periods);
+    final changed = await executor.update(
+      'courses',
+      _courseToRow(course),
+      where: 'id = ? AND schedule_id = ?',
+      whereArgs: [course.id, course.scheduleId],
+    );
+    if (changed != 1) {
+      throw const ValidationException('要更新的课程不存在');
+    }
+    await executor.delete(
+      'course_weeks',
+      where: 'course_id = ?',
+      whereArgs: [course.id],
+    );
+    await executor.delete(
+      'course_periods',
+      where: 'course_id = ?',
+      whereArgs: [course.id],
+    );
+    await _insertCourseRelations(executor, course);
   }
 
   static Future<void> _requirePeriods(

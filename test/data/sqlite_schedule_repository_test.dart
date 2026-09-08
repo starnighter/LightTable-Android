@@ -152,6 +152,97 @@ void main() {
     expect(updated.periods, [3, 4]);
   });
 
+  test('adds a manual course for only the selected date', () async {
+    final database = createTestDatabase();
+    addTearDown(database.close);
+    nextId = 0;
+    final repository = SqliteScheduleRepository(
+      database,
+      idGenerator: () => 'id-${nextId++}',
+    );
+    final schedule = await repository.importSchedule(importData());
+
+    final added = await repository.addCourse(
+      schedule.id,
+      CourseDraft(
+        name: '临时实验课',
+        location: '实验楼 201',
+        weekInterval: const [3],
+        weekday: 5,
+        periods: const [4, 5],
+      ),
+    );
+
+    expect(added.id, 'id-2');
+    expect(added.weekInterval, [3]);
+    expect(added.weekday, 5);
+    expect(added.periods, [4, 5]);
+    expect(await repository.getCourses(schedule.id), hasLength(2));
+  });
+
+  test('rescheduling splits only the selected recurring occurrence', () async {
+    final database = createTestDatabase();
+    addTearDown(database.close);
+    nextId = 0;
+    final repository = SqliteScheduleRepository(
+      database,
+      idGenerator: () => 'id-${nextId++}',
+    );
+    final schedule = await repository.importSchedule(
+      importData(weeks: const [1, 2, 3]),
+    );
+    final course = (await repository.getCourses(schedule.id)).single;
+
+    await repository.updateCourseOccurrence(
+      course: course,
+      sourceWeek: 2,
+      targetWeek: 4,
+      targetWeekday: 4,
+    );
+
+    final courses = await repository.getCourses(schedule.id);
+    expect(courses, hasLength(2));
+    final recurring = courses.singleWhere((item) => item.id == course.id);
+    final moved = courses.singleWhere((item) => item.id != course.id);
+    expect(recurring.weekInterval, [1, 3]);
+    expect(recurring.weekday, 2);
+    expect(moved.weekInterval, [4]);
+    expect(moved.weekday, 4);
+    expect(moved.name, course.name);
+    expect(moved.periods, course.periods);
+  });
+
+  test(
+    'failed occurrence update leaves the original course unchanged',
+    () async {
+      final database = createTestDatabase();
+      addTearDown(database.close);
+      nextId = 0;
+      final repository = SqliteScheduleRepository(
+        database,
+        idGenerator: () => 'id-${nextId++}',
+      );
+      final schedule = await repository.importSchedule(importData());
+      final course = (await repository.getCourses(schedule.id)).single;
+
+      await expectLater(
+        repository.updateCourseOccurrence(
+          course: course.copyWith(periods: const [11]),
+          sourceWeek: 1,
+          targetWeek: 3,
+          targetWeekday: 3,
+        ),
+        throwsA(isA<ValidationException>()),
+      );
+
+      expect((await repository.getCourses(schedule.id)).single.periods, [1, 2]);
+      expect((await repository.getCourses(schedule.id)).single.weekInterval, [
+        1,
+        2,
+      ]);
+    },
+  );
+
   test('bulk-loads every course with its own weeks and periods', () async {
     final database = createTestDatabase();
     addTearDown(database.close);

@@ -9,6 +9,9 @@ import '../../domain/utils/schedule_date_utils.dart';
 import '../../l10n/generated/app_localizations.dart';
 import '../utils/ui_formatters.dart';
 
+typedef CourseTapCallback = void Function(Course course, int week);
+typedef EmptySlotTapCallback = void Function(int week, int weekday, int period);
+
 class Timetable extends StatefulWidget {
   const Timetable({
     required this.schedule,
@@ -16,6 +19,7 @@ class Timetable extends StatefulWidget {
     required this.periods,
     required this.now,
     required this.onCourseTap,
+    required this.onEmptySlotTap,
     super.key,
   });
 
@@ -23,7 +27,8 @@ class Timetable extends StatefulWidget {
   final List<Course> courses;
   final List<Period> periods;
   final DateTime Function() now;
-  final ValueChanged<Course> onCourseTap;
+  final CourseTapCallback onCourseTap;
+  final EmptySlotTapCallback onEmptySlotTap;
 
   @override
   State<Timetable> createState() => _TimetableState();
@@ -93,16 +98,24 @@ class _TimetableState extends State<Timetable> {
 
   @override
   Widget build(BuildContext context) {
+    final currentWeek = ScheduleDateUtils.weekForDate(
+      widget.now(),
+      widget.schedule,
+    );
     return Column(
       children: [
         ValueListenableBuilder<int>(
           valueListenable: _week,
           builder: (context, week, _) => _WeekHeader(
             week: week,
-            currentWeek: ScheduleDateUtils.weekForDate(
-              widget.now(),
-              widget.schedule,
-            ),
+            currentWeek: currentWeek,
+            onReturnToCurrentWeek: currentWeek == null || currentWeek == week
+                ? null
+                : () => _pageController.animateToPage(
+                    currentWeek - 1,
+                    duration: const Duration(milliseconds: 220),
+                    curve: Curves.easeOutCubic,
+                  ),
           ),
         ),
         Expanded(
@@ -120,6 +133,7 @@ class _TimetableState extends State<Timetable> {
               periods: widget.periods,
               today: widget.now(),
               onCourseTap: widget.onCourseTap,
+              onEmptySlotTap: widget.onEmptySlotTap,
             ),
           ),
         ),
@@ -129,10 +143,15 @@ class _TimetableState extends State<Timetable> {
 }
 
 class _WeekHeader extends StatelessWidget {
-  const _WeekHeader({required this.week, required this.currentWeek});
+  const _WeekHeader({
+    required this.week,
+    required this.currentWeek,
+    required this.onReturnToCurrentWeek,
+  });
 
   final int week;
   final int? currentWeek;
+  final VoidCallback? onReturnToCurrentWeek;
 
   @override
   Widget build(BuildContext context) {
@@ -155,6 +174,13 @@ class _WeekHeader extends StatelessWidget {
               ),
             ),
           ],
+          const Spacer(),
+          IconButton(
+            key: const Key('return-to-current-week'),
+            tooltip: strings.returnToCurrentWeek,
+            onPressed: onReturnToCurrentWeek,
+            icon: const Icon(Icons.today_outlined),
+          ),
         ],
       ),
     );
@@ -169,6 +195,7 @@ class _WeekPage extends StatefulWidget {
     required this.periods,
     required this.today,
     required this.onCourseTap,
+    required this.onEmptySlotTap,
     super.key,
   });
 
@@ -177,7 +204,8 @@ class _WeekPage extends StatefulWidget {
   final List<_CoursePlacement> placements;
   final List<Period> periods;
   final DateTime today;
-  final ValueChanged<Course> onCourseTap;
+  final CourseTapCallback onCourseTap;
+  final EmptySlotTapCallback onEmptySlotTap;
 
   static const headerHeight = 56.0;
   static const minPeriodHeight = 32.0;
@@ -227,18 +255,75 @@ class _WeekPageState extends State<_WeekPage>
                   dayWidth: dayWidth,
                   periodHeight: periodHeight,
                 ),
+                _EmptySlotsLayer(
+                  week: widget.week,
+                  periods: widget.periods,
+                  dayWidth: dayWidth,
+                  periodHeight: periodHeight,
+                  onTap: (weekday, period) {
+                    if (!_isOccupied(weekday, period)) {
+                      widget.onEmptySlotTap(widget.week, weekday, period);
+                    }
+                  },
+                ),
                 for (final placement in widget.placements)
                   _CourseBlock(
                     placement: placement,
                     dayWidth: dayWidth,
                     periodHeight: periodHeight,
-                    onTap: () => widget.onCourseTap(placement.course),
+                    onTap: () =>
+                        widget.onCourseTap(placement.course, widget.week),
                   ),
               ],
             ),
           ),
         );
       },
+    );
+  }
+
+  bool _isOccupied(int weekday, int period) {
+    return widget.placements.any(
+      (placement) =>
+          placement.course.weekday == weekday &&
+          placement.course.periods.contains(period),
+    );
+  }
+}
+
+class _EmptySlotsLayer extends StatelessWidget {
+  const _EmptySlotsLayer({
+    required this.week,
+    required this.periods,
+    required this.dayWidth,
+    required this.periodHeight,
+    required this.onTap,
+  });
+
+  final int week;
+  final List<Period> periods;
+  final double dayWidth;
+  final double periodHeight;
+  final void Function(int weekday, int period) onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Positioned(
+      left: _WeekPage.periodWidth,
+      top: _WeekPage.headerHeight,
+      width: dayWidth * 7,
+      height: periodHeight * periods.length,
+      child: GestureDetector(
+        key: ValueKey('empty-slots-layer-$week'),
+        behavior: HitTestBehavior.opaque,
+        onTapUp: (details) {
+          final weekday = details.localPosition.dx ~/ dayWidth + 1;
+          final periodIndex = details.localPosition.dy ~/ periodHeight;
+          if (weekday < 1 || weekday > 7) return;
+          if (periodIndex < 0 || periodIndex >= periods.length) return;
+          onTap(weekday, periods[periodIndex].number);
+        },
+      ),
     );
   }
 }

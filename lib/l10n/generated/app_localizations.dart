@@ -268,6 +268,12 @@ abstract class AppLocalizations {
   /// **'非本周'**
   String get notCurrentWeek;
 
+  /// No description provided for @returnToCurrentWeek.
+  ///
+  /// In zh, this message translates to:
+  /// **'回到当前周'**
+  String get returnToCurrentWeek;
+
   /// No description provided for @monthTitle.
   ///
   /// In zh, this message translates to:
@@ -321,6 +327,30 @@ abstract class AppLocalizations {
   /// In zh, this message translates to:
   /// **'课程名称'**
   String get courseName;
+
+  /// No description provided for @addCourse.
+  ///
+  /// In zh, this message translates to:
+  /// **'添加课程'**
+  String get addCourse;
+
+  /// No description provided for @editCourse.
+  ///
+  /// In zh, this message translates to:
+  /// **'编辑课程'**
+  String get editCourse;
+
+  /// No description provided for @courseDate.
+  ///
+  /// In zh, this message translates to:
+  /// **'上课日期'**
+  String get courseDate;
+
+  /// No description provided for @courseDateValue.
+  ///
+  /// In zh, this message translates to:
+  /// **'{year}年{month}月{day}日 · 第 {week} 周'**
+  String courseDateValue(int year, int month, int day, int week);
 
   /// No description provided for @teacher.
   ///

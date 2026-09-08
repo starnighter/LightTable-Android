@@ -105,6 +105,106 @@ void main() {
     expect(course.periods, [2, 3]);
   });
 
+  testWidgets('return-to-current-week button jumps back immediately', (
+    tester,
+  ) async {
+    final harness = await _Harness.create(seedSchedules: 1);
+    addTearDown(harness.close);
+    await harness.pump(tester);
+
+    await tester.fling(
+      find.byKey(const Key('week-page-view')),
+      const Offset(-700, 0),
+      1200,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('第 2 周'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('return-to-current-week')));
+    await tester.pumpAndSettle();
+    expect(find.text('第 1 周'), findsOneWidget);
+  });
+
+  testWidgets('editing a date moves only the tapped course occurrence', (
+    tester,
+  ) async {
+    final harness = await _Harness.create(seedSchedules: 1);
+    addTearDown(harness.close);
+    await harness.pump(tester);
+
+    await tester.tap(find.byKey(const Key('course-course-1')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('course-date-picker')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('4').last);
+    await tester.tap(find.text('确定'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('save-course-button')));
+    await tester.pumpAndSettle();
+
+    final schedule = await harness.scheduleRepository.getSelectedSchedule();
+    final courses = await harness.scheduleRepository.getCourses(schedule!.id);
+    expect(courses, hasLength(2));
+    final recurring = courses.singleWhere((item) => item.id == 'course-1');
+    final moved = courses.singleWhere((item) => item.id != 'course-1');
+    expect(recurring.weekInterval, [2, 3]);
+    expect(recurring.weekday, 2);
+    expect(moved.weekInterval, [1]);
+    expect(moved.weekday, 4);
+  });
+
+  testWidgets('tapping an empty slot adds a one-date course', (tester) async {
+    final harness = await _Harness.create(seedSchedules: 1);
+    addTearDown(harness.close);
+    await harness.pump(tester);
+
+    final emptyLayer = find.byKey(const ValueKey('empty-slots-layer-1'));
+    expect(emptyLayer, findsOneWidget);
+    final layerRect = tester.getRect(emptyLayer);
+    final dayWidth = layerRect.width / 7;
+    final periodHeight = layerRect.height / 10;
+    await tester.tapAt(
+      Offset(
+        layerRect.left + dayWidth * 2.5,
+        layerRect.top + periodHeight * 3.5,
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('添加课程'), findsOneWidget);
+    await tester.enterText(find.byKey(const Key('course-name-field')), '临时加课');
+    await tester.tap(find.byKey(const Key('save-course-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('临时加课'), findsOneWidget);
+    final schedule = await harness.scheduleRepository.getSelectedSchedule();
+    final added = (await harness.scheduleRepository.getCourses(schedule!.id))
+        .singleWhere((course) => course.name == '临时加课');
+    expect(added.weekInterval, [1]);
+    expect(added.weekday, 3);
+    expect(added.periods, [4]);
+  });
+
+  testWidgets('empty slots use one lightweight hit layer per week', (
+    tester,
+  ) async {
+    final harness = await _Harness.create(seedSchedules: 1);
+    addTearDown(harness.close);
+    await harness.pump(tester);
+
+    expect(find.byKey(const ValueKey('empty-slots-layer-1')), findsOneWidget);
+    expect(find.byKey(const Key('empty-slot-1-3-4')), findsNothing);
+
+    await tester.fling(
+      find.byKey(const Key('week-page-view')),
+      const Offset(-700, 0),
+      1200,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('第 2 周'), findsOneWidget);
+    expect(find.byKey(const ValueKey('empty-slots-layer-2')), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('schedule parameters can be edited and saved', (tester) async {
     final harness = await _Harness.create(seedSchedules: 1);
     addTearDown(harness.close);
@@ -346,7 +446,7 @@ final class _Harness {
         ),
       );
       if (index == 0 && seedOverlappingCourses) {
-        schedules.addCourse(
+        schedules.seedCourse(
           Course(
             id: 'course-overlap',
             scheduleId: schedule.id,
@@ -360,7 +460,7 @@ final class _Harness {
         );
       }
       if (index == 0 && seedAlternatingCourses) {
-        schedules.addCourse(
+        schedules.seedCourse(
           Course(
             id: 'course-even',
             scheduleId: schedule.id,
@@ -401,6 +501,7 @@ final class _FakeScheduleRepository implements ScheduleRepository {
   final List<Schedule> _schedules = [];
   final Map<String, List<Course>> _courses = {};
   String? _selectedId;
+  var _nextCourseId = 0;
 
   void add(Schedule schedule, Course course) {
     _schedules.add(schedule);
@@ -408,8 +509,18 @@ final class _FakeScheduleRepository implements ScheduleRepository {
     _selectedId = schedule.id;
   }
 
-  void addCourse(Course course) {
+  void seedCourse(Course course) {
     _courses.putIfAbsent(course.scheduleId, () => []).add(course);
+  }
+
+  @override
+  Future<Course> addCourse(String scheduleId, CourseDraft draft) async {
+    final course = draft.toCourse(
+      id: 'manual-${_nextCourseId++}',
+      scheduleId: scheduleId,
+    );
+    _courses.putIfAbsent(scheduleId, () => []).add(course);
+    return course;
   }
 
   @override
@@ -458,6 +569,47 @@ final class _FakeScheduleRepository implements ScheduleRepository {
   Future<void> updateCourse(Course course) async {
     final courses = _courses[course.scheduleId]!;
     courses[courses.indexWhere((item) => item.id == course.id)] = course;
+  }
+
+  @override
+  Future<void> updateCourseOccurrence({
+    required Course course,
+    required int sourceWeek,
+    required int targetWeek,
+    required int targetWeekday,
+  }) async {
+    final courses = _courses[course.scheduleId]!;
+    final index = courses.indexWhere((item) => item.id == course.id);
+    final stored = courses[index];
+    if (sourceWeek == targetWeek && stored.weekday == targetWeekday) {
+      courses[index] = course.copyWith(weekInterval: stored.weekInterval);
+      return;
+    }
+    if (stored.weekInterval.length == 1) {
+      courses[index] = course.copyWith(
+        weekInterval: [targetWeek],
+        weekday: targetWeekday,
+      );
+      return;
+    }
+    courses[index] = course.copyWith(
+      weekInterval: stored.weekInterval
+          .where((week) => week != sourceWeek)
+          .toList(),
+      weekday: stored.weekday,
+    );
+    courses.add(
+      Course(
+        id: 'manual-${_nextCourseId++}',
+        scheduleId: course.scheduleId,
+        name: course.name,
+        location: course.location,
+        teacher: course.teacher,
+        weekInterval: [targetWeek],
+        weekday: targetWeekday,
+        periods: course.periods,
+      ),
+    );
   }
 
   @override

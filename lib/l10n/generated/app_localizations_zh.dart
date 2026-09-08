@@ -99,6 +99,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get notCurrentWeek => '非本周';
 
   @override
+  String get returnToCurrentWeek => '回到当前周';
+
+  @override
   String monthTitle(int month) {
     return '$month月';
   }
@@ -126,6 +129,20 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get courseName => '课程名称';
+
+  @override
+  String get addCourse => '添加课程';
+
+  @override
+  String get editCourse => '编辑课程';
+
+  @override
+  String get courseDate => '上课日期';
+
+  @override
+  String courseDateValue(int year, int month, int day, int week) {
+    return '$year年$month月$day日 · 第 $week 周';
+  }
 
   @override
   String get teacher => '教师';
